@@ -1,5 +1,5 @@
 """
-汉语学习工具 — Chinese Learning CLI
+汉语学习工具 — Chinese Learning CLI  (龙码 LóngMǎ)
 
 A beautiful terminal-based tool for learning Mandarin Chinese,
 designed for German / Austrian native speakers in tech.
@@ -17,6 +17,7 @@ from rich.text import Text
 from rich.table import Table
 
 from chinese_cli import __version__
+from chinese_cli.config import AppConfig
 from chinese_cli.modes import mode_learn, mode_flashcards, mode_quiz, mode_review
 from chinese_cli.pronunciation import (
     show_tone_guide,
@@ -33,6 +34,19 @@ console = Console()
 
 
 # ---------------------------------------------------------------------------
+# Sound effects
+# ---------------------------------------------------------------------------
+
+def _sound(kind: str, config: AppConfig) -> None:
+    """Play terminal bell sound if enabled."""
+    if not config.sound_enabled:
+        return
+    if kind == "correct":
+        sys.stdout.write("\a")
+        sys.stdout.flush()
+
+
+# ---------------------------------------------------------------------------
 # Welcome banner
 # ---------------------------------------------------------------------------
 
@@ -40,9 +54,9 @@ BANNER = r"""
 [bold cyan]
   ╔══════════════════════════════════════════════════╗
   ║                                                  ║
-  ║     汉 语 学 习 工 具                              ║
+  ║     龙 码  LóngMǎ                                ║
   ║     ─────────────────                             ║
-  ║     Chinese Learning CLI                         ║
+  ║     Dragon Code · Chinese Learning CLI           ║
   ║                                                  ║
   ║     [yellow]学中文，走向世界[/yellow]                           ║
   ║     [dim]Learn Chinese, reach the world[/dim]               ║
@@ -94,10 +108,24 @@ MENU_CHOICES = [
     questionary.Choice("🃏  Flashcards — Study with cards", value="flashcards"),
     questionary.Choice("📝  Quiz — Multiple choice test", value="quiz"),
     questionary.Choice("🔄  Review — Spaced repetition", value="review"),
+    questionary.Separator("─── Advanced ───"),
+    questionary.Choice("🎵  Tone Practice — Identify tones", value="tones"),
+    questionary.Choice("✍️   Dictation — Type the Pinyin", value="dictation"),
+    questionary.Choice("🏗️   Sentence Builder — Grammar practice", value="sentences"),
+    questionary.Choice("📋  HSK Test — Timed exam simulator", value="hsk_test"),
+    questionary.Separator("─── Reference ───"),
     questionary.Choice("🔊  Pronunciation — How to say it", value="pronunciation"),
+    questionary.Choice("✏️   Characters — Radical breakdowns", value="characters"),
+    questionary.Choice("📖  Grammar — Essential patterns", value="grammar"),
+    questionary.Separator("─── Analytics ───"),
     questionary.Choice("📈  Stats — View your progress", value="stats"),
+    questionary.Choice("📊  Charts — Progress visualisation", value="charts"),
+    questionary.Choice("🎯  Weak Words — Focus practice", value="weak_words"),
+    questionary.Choice("📄  Export — Generate study report", value="export"),
+    questionary.Separator("─── Tools ───"),
     questionary.Choice("🔍  Search — Find a word", value="search"),
-    questionary.Choice("⚙️   Language — Change language", value="language"),
+    questionary.Choice("📦  Import — Load custom vocab (CSV/JSON)", value="import"),
+    questionary.Choice("⚙️   Settings — Language & preferences", value="settings"),
     questionary.Choice("👋  Quit — 再见！", value="quit"),
 ]
 
@@ -106,6 +134,7 @@ MENU_STYLE = questionary.Style([
     ("pointer", "fg:cyan bold"),
     ("answer", "fg:green bold"),
     ("question", "fg:white bold"),
+    ("separator", "fg:magenta"),
 ])
 
 
@@ -207,6 +236,68 @@ def _pronunciation_lookup() -> None:
         console.print(render_word_pronunciation(v.hanzi, v.pinyin))
 
 
+def _settings_menu(config: AppConfig, lang_ref: list[str]) -> None:
+    """Settings sub-menu for preferences."""
+    while True:
+        console.print()
+        choice = questionary.select(
+            "⚙️  Settings:",
+            choices=[
+                questionary.Choice(
+                    f"🌐  Language — Currently: {lang_ref[0]}", value="language"
+                ),
+                questionary.Choice(
+                    f"🔊  Sound — {'ON ✅' if config.sound_enabled else 'OFF ❌'}",
+                    value="sound",
+                ),
+                questionary.Choice(
+                    f"🌟  Daily Challenge — {'ON ✅' if config.show_daily_challenge else 'OFF ❌'}",
+                    value="daily",
+                ),
+                questionary.Choice(
+                    f"⏱️   Session Timer — {'ON ✅' if config.show_session_timer else 'OFF ❌'}",
+                    value="timer",
+                ),
+                questionary.Choice(
+                    f"📊  HSK Level Cap — HSK {config.max_hsk_level}",
+                    value="hsk_cap",
+                ),
+                questionary.Choice("⬅️   Back", value="back"),
+            ],
+            style=MENU_STYLE,
+        ).ask()
+
+        if choice is None or choice == "back":
+            break
+        elif choice == "language":
+            lang_ref[0] = _select_language()
+            config.update(language=lang_ref[0])
+            console.print(f"  [bold green]✓[/bold green] Language set to {lang_ref[0]}")
+        elif choice == "sound":
+            config.update(sound_enabled=not config.sound_enabled)
+            state = "ON ✅" if config.sound_enabled else "OFF ❌"
+            console.print(f"  [bold green]✓[/bold green] Sound: {state}")
+        elif choice == "daily":
+            config.update(show_daily_challenge=not config.show_daily_challenge)
+            state = "ON ✅" if config.show_daily_challenge else "OFF ❌"
+            console.print(f"  [bold green]✓[/bold green] Daily Challenge: {state}")
+        elif choice == "timer":
+            config.update(show_session_timer=not config.show_session_timer)
+            state = "ON ✅" if config.show_session_timer else "OFF ❌"
+            console.print(f"  [bold green]✓[/bold green] Session Timer: {state}")
+        elif choice == "hsk_cap":
+            level = questionary.select(
+                "Max HSK level to show:",
+                choices=[
+                    questionary.Choice(f"HSK {i}", value=i) for i in range(1, 6)
+                ],
+                style=MENU_STYLE,
+            ).ask()
+            if level:
+                config.update(max_hsk_level=level)
+                console.print(f"  [bold green]✓[/bold green] HSK cap set to {level}")
+
+
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
@@ -216,13 +307,20 @@ def main() -> None:
     try:
         _show_banner()
 
+        # Load config
+        config = AppConfig.load()
+
         # Initialize progress tracker
         tracker = ProgressTracker()
 
-        # Select language
-        lang = _select_language()
+        # Select language (or use saved preference)
+        if config.language in ("de", "en", "both"):
+            lang = config.language
+        else:
+            lang = _select_language()
+
         lang_labels = {"de": "🇩🇪 Deutsch", "en": "🇬🇧 English", "both": "🇩🇪🇬🇧 Both"}
-        console.print(f"\n  [dim]Language set to:[/dim] [bold cyan]{lang_labels[lang]}[/bold cyan]\n")
+        console.print(f"\n  [dim]Language:[/dim] [bold cyan]{lang_labels[lang]}[/bold cyan]\n")
 
         # Show quick stats if returning user
         stats = tracker.get_stats()
@@ -235,6 +333,17 @@ def main() -> None:
                 f"Due: {'⏰ ' + str(due) if due > 0 else '✅ 0'}[/dim]\n"
             )
 
+        # Daily challenge on launch
+        if config.show_daily_challenge:
+            from chinese_cli.advanced_modes import daily_challenge
+            daily_challenge(lang)
+
+        # Mutable reference for settings menu
+        lang_ref = [lang]
+
+        # Session timer
+        session_start = time.time()
+
         # Main loop
         while True:
             choice = questionary.select(
@@ -245,16 +354,27 @@ def main() -> None:
 
             if choice is None or choice == "quit":
                 tracker.save()
+
+                # Session summary
+                elapsed = time.time() - session_start
+                mins = int(elapsed // 60)
+                secs = int(elapsed % 60)
+
                 console.print(
                     Panel(
-                        "[bold yellow]再见！[/bold yellow] [dim]Goodbye![/dim]\n"
-                        "[dim]See you next time. 加油! 💪[/dim]",
+                        f"[bold yellow]再见！[/bold yellow] [dim]Goodbye![/dim]\n"
+                        f"[dim]Session: {mins}:{secs:02d} · See you next time. 加油! 💪[/dim]",
                         border_style="cyan",
-                        width=40,
+                        width=45,
                     )
                 )
                 break
-            elif choice == "learn":
+
+            # Use the potentially updated lang
+            lang = lang_ref[0]
+
+            # Core modes
+            if choice == "learn":
                 mode_learn(lang)
             elif choice == "flashcards":
                 mode_flashcards(lang, tracker)
@@ -262,15 +382,52 @@ def main() -> None:
                 mode_quiz(lang, tracker)
             elif choice == "review":
                 mode_review(lang, tracker)
-            elif choice == "stats":
-                show_stats(tracker)
+
+            # Advanced modes
+            elif choice == "tones":
+                from chinese_cli.advanced_modes import mode_tone_practice
+                mode_tone_practice(tracker)
+            elif choice == "dictation":
+                from chinese_cli.advanced_modes import mode_pinyin_dictation
+                mode_pinyin_dictation(lang, tracker)
+            elif choice == "sentences":
+                from chinese_cli.advanced_modes import mode_sentence_builder
+                mode_sentence_builder(lang)
+            elif choice == "hsk_test":
+                from chinese_cli.advanced_modes import mode_hsk_simulator
+                mode_hsk_simulator(lang, tracker)
+
+            # Reference
             elif choice == "pronunciation":
                 _pronunciation_menu()
+            elif choice == "characters":
+                from chinese_cli.characters import show_radical_table
+                show_radical_table()
+            elif choice == "grammar":
+                from chinese_cli.grammar import show_grammar_patterns
+                show_grammar_patterns(lang)
+
+            # Analytics
+            elif choice == "stats":
+                show_stats(tracker)
+            elif choice == "charts":
+                from chinese_cli.analytics import show_progress_charts
+                show_progress_charts(tracker)
+            elif choice == "weak_words":
+                from chinese_cli.analytics import show_weak_words
+                show_weak_words(tracker)
+            elif choice == "export":
+                from chinese_cli.analytics import export_study_report
+                export_study_report(tracker)
+
+            # Tools
             elif choice == "search":
                 _search_mode(lang)
-            elif choice == "language":
-                lang = _select_language()
-                console.print(f"  [dim]Language changed to:[/dim] [bold cyan]{lang_labels[lang]}[/bold cyan]\n")
+            elif choice == "import":
+                from chinese_cli.plugins import show_import_menu
+                show_import_menu()
+            elif choice == "settings":
+                _settings_menu(config, lang_ref)
 
     except KeyboardInterrupt:
         console.print("\n\n  [dim]再见! Goodbye! 👋[/dim]\n")
