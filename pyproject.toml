@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chinese-cli"
+version = "1.0.0"
+description = "CLI tool to learn Mandarin Chinese for tech professionals — DE/EN base languages"
+requires-python = ">=3.10"
+dependencies = [
+    "rich>=13.0",
+    "questionary>=2.0",
+]
+
+[project.scripts]
+chinese-cli = "chinese_cli.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["chinese_cli*"]
